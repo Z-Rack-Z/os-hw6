@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Homework 6: Mutual Exclusion and Files: answers of Zac Rackers</title>
+<style>body{font:15px/1.55 system-ui,sans-serif;max-width:860px;margin:24px auto;padding:0 16px;color:#151c2c;background:#fff}h1{font-size:1.5rem;margin:0 0 4px}h2{font-size:1.15rem;margin:28px 0 8px;border-bottom:2px solid #d9deea;padding-bottom:4px}.meta{color:#69738c;margin:0 0 16px}.a{margin:0 0 14px}.q{margin:0 0 4px;color:#3d4760;font-size:.92rem}pre{white-space:pre-wrap;word-wrap:break-word;font:13px/1.5 ui-monospace,Menlo,Consolas,monospace;background:#f5f7fb;border:1px solid #d9deea;border-radius:6px;padding:8px 10px;margin:0}.empty{color:#b45309;margin:0}table{border-collapse:collapse;font:13px ui-monospace,Menlo,Consolas,monospace}th,td{border:1px solid #d9deea;padding:4px 8px;text-align:left}th{background:#f5f7fb}</style>
+</head>
+<body>
+<h1>Homework 6: Mutual Exclusion and Files</h1>
+<p class="meta">Answers of <b>Zac Rackers</b> · saved 10/20/2026, 1:45:55 AM</p>
+<h2>Problem 1Races and the rules a lock must follow</h2>
+<div class="a"><p class="q">(a) (i) count starts at 3. Thread T0 runs count = count + 1 once and thread T1 runs count = count * 2 once. List every value count can hold after both have finished, and for each value give one order of the six steps that produces it (for example: T0 load, T0 add, T1 load, ...). (ii) count starts at 0, and each of two threads runs count = count + 1 four times. What are the largest and the smallest possible final values? The values alone are not the answer (Part B&#39;s program can confirm them): the answer is an order of steps that produces the smallest, step by step, and an explanation of why no order can produce anything smaller.</p>
+<pre>(i) Possible final values: 4, 6, 7, 8. L=load, A=add 1, M=multiply by 2, S=store (parentheses show register or stored value).
+4: T0 L(3), A(4); T1 L(3), M(6), S(6); T0 S(4).
+6: T1 L(3), M(6); T0 L(3), A(4), S(4); T1 S(6).
+7: T1 L(3), M(6), S(6); T0 L(6), A(7), S(7).
+8: T0 L(3), A(4), S(4); T1 L(4), M(8), S(8).
+The last store is either based on original 3 (4 or 6) or on the other thread&#39;s completed store (7 or 8).
+(ii) Maximum 8: let T0 complete four increments, then T1 complete four. Minimum 2. One 24-step order:
+T0 L(0), A(1); T1 L(0); T0 S(1), L(1), A(2), S(2), L(2), A(3), S(3); T1 A(1), S(1); T0 L(1), A(2); T1 L(1), A(2), S(2), L(2), A(3), S(3), L(3), A(4), S(4); T0 S(2).
+Store sequence: 1,2,3,1,2,3,4,2. The last store must be the fourth increment of one thread. Before that thread&#39;s final load, it has already stored at least once; every store writes at least 1. The final increment therefore writes at least 2.</pre>
+</div>
+<div class="a"><p class="q">(b) Each scheme below is flawed. Name the requirement (1 to 6) that is the root cause of its trouble, and explain in one or two sentences.</p>
+<table><tr><th></th><th>Requirement (1–6)</th><th>Why</th></tr>
+<tr><th>A: Each process raises its own &#39;I want in&#39; flag, then waits until the other process&#39;s flag is down. Both processes raise their flags at the same moment.</th><td>3</td><td>Both raise flags and wait forever for the other to lower its flag.</td></tr>
+<tr><th>B: Entry is shared out in fixed time slots: P may enter only during even-numbered milliseconds and Q only during odd ones, even when the other process is nowhere near the critical section.</th><td>4</td><td>Even with a free resource, a process must wait for its assigned time slot.</td></tr>
+<tr><th>C: To keep the lock working, every process must keep &#39;checking in&#39; from its non-critical code. One process stops in its non-critical code (it waits for a user who has gone home), and now nobody can enter.</th><td>2</td><td>Stopping outside the critical section prevents check-in and blocks others.</td></tr>
+<tr><th>D: A thread locks the shared log file, then asks a network service for the current time and waits for the reply with no time limit, still holding the lock.</th><td>6</td><td>An unbounded network wait can keep the process inside forever.</td></tr>
+<tr><th>E: After raising its flag, each process pauses for 2 ms, on the theory that by then the other process will surely have raised its flag too if it also wants to enter.</th><td>5</td><td>The 2 ms pause assumes a timing/speed bound that may not hold.</td></tr>
+<tr><th>F: A process reads a shared busy variable and, if it is 0, sets it to 1 in the next instruction and enters.</th><td>1</td><td>Both can read busy=0 before either writes 1, then both enter.</td></tr>
+</table>
+</div>
+<div class="a"><p class="q">(c) A kernel protects its run queue by disabling interrupts on entry to the critical section and enabling them again on exit. (i) Why does this guarantee mutual exclusion on a computer with one processor? (ii) Give two costs of the approach, even on one processor. (iii) The same kernel is moved to a computer with four cores. Describe exactly how two threads can now be in the critical section at the same time.</p>
+<pre>(i) With one CPU, disabling interrupts prevents timer-preemptive context switching while this thread handles the run queue, provided it does not voluntarily block.
+(ii) Interrupt latency delays device and timer handling, hurting responsiveness; an unbounded wait or crash with interrupts off can freeze the system.
+(iii) Disabling interrupts is local to a core. T0 on core 0 and T1 on core 1 can each disable its own interrupts and both enter the shared run-queue critical section simultaneously.</pre>
+</div>
+<div class="a"><p class="q">(d) (i) What does the call return, and what does it change, when bolt is 0 and when it is 1? Use scheme F from (b) to explain why the read and the write must happen in one instruction. (ii) On a four-core machine, P1 is inside its critical section while P2, P3 and P4 spin. P1 leaves and soon asks to enter again. Which process gets in next, and can P4 wait forever? Which requirement is at risk? (iii) On a one-processor machine with strict priorities, low-priority L holds bolt when high-priority H becomes ready and starts spinning on it. What happens, and why?</p>
+<pre>(i) For bolt=0, CAS returns 0 and changes bolt atomically to 1; the caller enters. For bolt=1, it returns 1 and leaves bolt at 1; the caller spins. Scheme F fails because separate read/write lets both contenders read 0. Atomic CAS allows only one transition from 0 to 1.
+(ii) Any of P2, P3, P4, or a returning P1 may win after release. There is no FIFO order; P4 can lose indefinitely. Requirement 3 (no starvation) is at risk.
+(iii) H spins at higher priority, starving L of CPU time to release bolt on a one-processor system. A blocking lock or priority inheritance would let L run and finish.</pre>
+</div>
+<h2>Problem 2Semaphores, readers and writers, and messages</h2>
+<div class="a"><p class="q">(a) The buffer already holds item A, so s = 1, n = 1 and e = 1. The twelve operations below run in this order. After each one, write the values of the three semaphores, the items in the buffer (oldest first), and which process is blocked and on which semaphore (or &quot;none&quot;).</p>
+<table><tr><th></th><th>s</th><th>n</th><th>e</th><th>Items in the buffer</th><th>Blocked (who, on which semaphore)</th></tr>
+<tr><th>1. P: semWait(e)</th><td>1</td><td>1</td><td>0</td><td>A</td><td>none</td></tr>
+<tr><th>2. P: semWait(s)</th><td>0</td><td>1</td><td>0</td><td>A</td><td>none</td></tr>
+<tr><th>3. C: semWait(n)</th><td>0</td><td>0</td><td>0</td><td>A</td><td>none</td></tr>
+<tr><th>4. C: semWait(s)</th><td>-1</td><td>0</td><td>0</td><td>A</td><td>C on s</td></tr>
+<tr><th>5. P: append(B)</th><td>-1</td><td>0</td><td>0</td><td>A, B</td><td>C on s</td></tr>
+<tr><th>6. P: semSignal(s)</th><td>0</td><td>0</td><td>0</td><td>A, B</td><td>none; C released</td></tr>
+<tr><th>7. P: semSignal(n)</th><td>0</td><td>1</td><td>0</td><td>A, B</td><td>none</td></tr>
+<tr><th>8. P: semWait(e) (for its next item)</th><td>0</td><td>1</td><td>-1</td><td>A, B</td><td>P on e</td></tr>
+<tr><th>9. C: take()</th><td>0</td><td>1</td><td>-1</td><td>B</td><td>P on e</td></tr>
+<tr><th>10. C: semSignal(s)</th><td>1</td><td>1</td><td>-1</td><td>B</td><td>P on e</td></tr>
+<tr><th>11. C: semSignal(e)</th><td>1</td><td>1</td><td>0</td><td>B</td><td>none; P released</td></tr>
+<tr><th>12. P: semWait(s)</th><td>0</td><td>1</td><td>0</td><td>B</td><td>none</td></tr>
+</table>
+</div>
+<div class="a"><p class="q">(a) The buffer already holds item A, so s = 1, n = 1 and e = 1. The twelve operations below run in this order. After each one, write the values of the three semaphores, the items in the buffer (oldest first), and which process is blocked and on which semaphore (or &quot;none&quot;).</p>
+<pre>After operation 8, e=-1 means one producer waits for an empty slot; the buffer is full. C takes A because it is oldest. P&#39;s signal at operation 6 already released C from semWait(s), granting C the mutex; C needs no second wait at operation 9.</pre>
+</div>
+<div class="a"><p class="q">(b) A programmer swaps the producer&#39;s two waits, so it runs semWait(s) and then semWait(e). (i) Start with a full buffer: s = 1, n = 2, e = 0. Give the shortest sequence of semaphore operations that leaves both processes blocked forever, with each semaphore&#39;s value after every operation. Who holds what, and who is waiting for whom? (ii) If the buffer is not full when the two processes start, can they still end up in the same deadlock later? How? (iii) Would swapping the producer&#39;s two semSignal calls instead cause the same problem? Why or why not?</p>
+<pre>(i) Start (s,n,e)=(1,2,0). P semWait(s) -&gt; (0,2,0), holding s. P semWait(e) -&gt; (0,2,-1), blocked. C semWait(n) -&gt; (0,1,-1), claiming an item. C semWait(s) -&gt; (-1,1,-1), blocked. This is the shortest four-operation sequence leaving both blocked. P needs C to remove an item and signal e; C needs P to release s.
+(ii) Yes. P can fill the buffer through prior iterations while C is delayed, then take s for another iteration with e=0, recreating the same circular wait.
+(iii) Swapping the producer&#39;s two signals alone cannot cause this deadlock; both signals are nonblocking, so P never holds s while waiting on e.</pre>
+</div>
+<div class="a"><p class="q">(c) Give each start and finish time under both policies.</p>
+<table><tr><th></th><th>Readers priority: start</th><th>Readers priority: finish</th><th>Writers priority: start</th><th>Writers priority: finish</th></tr>
+<tr><th>R1</th><td>0</td><td>4</td><td>0</td><td>4</td></tr>
+<tr><th>W1</th><td>12</td><td>14</td><td>4</td><td>6</td></tr>
+<tr><th>R2</th><td>2</td><td>6</td><td>6</td><td>10</td></tr>
+<tr><th>R3</th><td>5</td><td>9</td><td>6</td><td>10</td></tr>
+<tr><th>R4</th><td>8</td><td>12</td><td>8</td><td>12</td></tr>
+</table>
+</div>
+<div class="a"><p class="q">(c) Give each start and finish time under both policies.</p>
+<pre>W1 waits 12-1=11 units with readers priority and 4-1=3 with writers priority. Under reader priority, overlapping 4-unit reads at times 0,2,5,8 keep the file occupied through time 12. A reader arriving every 3 units forever would keep the file occupied forever, so W1 would starve. With writers priority, R2 and R3 start together after W1 finishes at 6; R4 arrives at 8 and joins.</pre>
+</div>
+<div class="a"><p class="q">(d) (i) What does the single message stand for, and why can at most one process be in its critical section? (ii) What happens if the mailbox starts with two messages, and what if it starts with none? (iii) Why would the scheme fail if receive returned at once, empty-handed, when the box is empty?</p>
+<pre>(i) The one message is a token granting entry. receive removes it, so everyone else blocks until its holder sends it back on exit.
+(ii) Two messages permit two simultaneous entries, violating mutual exclusion. No message leaves everyone blocked indefinitely.
+(iii) A nonblocking empty-handed receive would let processes proceed without owning the token, so simultaneous entries become possible.</pre>
+</div>
+<h2>Problem 3Records, blocks and organizations</h2>
+<div class="a"><p class="q">(a) (i) Fixed blocking. A file holds 10,000 records of 300 bytes each, in blocks of 2,048 bytes. Records are never split. Give the blocking factor, the unused bytes at the end of each full block, the number of blocks the file needs, and the block and slot of record number 4,321 (records, blocks and slots are all numbered from 0). What percentage of all the bytes in the file&#39;s blocks holds no record data? Count the unused bytes in every block, including the space left at the end of the last block.</p>
+<pre>Blocking factor=floor(2048/300)=6. Unused in each full block=2048-6×300=248 bytes. Blocks=ceil(10000/6)=1667. Record 4321: block floor(4321/6)=720, slot 4321 mod 6=1. Allocated=1667×2048=3,414,016 bytes; records=3,000,000 bytes; unused=414,016 bytes, or 414,016/3,414,016×100=12.13% (including last block).</pre>
+</div>
+<div class="a"><p class="q">(a) (i) Fixed blocking. A file holds 10,000 records of 300 bytes each, in blocks of 2,048 bytes. Records are never split. Give the blocking factor, the unused bytes at the end of each full block, the number of blocks the file needs, and the block and slot of record number 4,321 (records, blocks and slots are all numbered from 0). What percentage of all the bytes in the file&#39;s blocks holds no record data? Count the unused bytes in every block, including the space left at the end of the last block.</p>
+<table><tr><th></th><th>Blocks used</th><th>Unused bytes (gaps left inside blocks plus the space left at the end of the last block)</th><th>Records split across two blocks</th></tr>
+<tr><th>Variable-length spanned</th><td>4</td><td>596</td><td>C: 224+226; E: 598+102; G: 572+28</td></tr>
+<tr><th>Variable-length unspanned</th><td>5</td><td>1,620</td><td>none</td></tr>
+</table>
+</div>
+<div class="a"><p class="q">(a) (i) Fixed blocking. A file holds 10,000 records of 300 bytes each, in blocks of 2,048 bytes. Records are never split. Give the blocking factor, the unused bytes at the end of each full block, the number of blocks the file needs, and the block and slot of record number 4,321 (records, blocks and slots are all numbered from 0). What percentage of all the bytes in the file&#39;s blocks holds no record data? Count the unused bytes in every block, including the space left at the end of the last block.</p>
+<pre>Spanned: block 0=A300+B500+C224; block 1=C226+D200+E598; block 2=E102+F350+G572; block 3=G28+H400, leaving 596 bytes. Total records=3500 bytes; 4×1024-3500=596.
+Unspanned: block 0=A300+B500 (224 unused); block 1=C450+D200 (374); block 2=E700 (324); block 3=F350+G600 (74); block 4=H400 (624). Total unused=224+374+324+74+624=1,620.
+E spans blocks 1 and 2 (2 reads) or occupies block 2 alone (1 read). Unspanned records are simpler and faster to fetch individually, but waste more space.</pre>
+</div>
+<div class="a"><p class="q">(b) Choose a file organization for each job: pile, sequential, indexed sequential, indexed, or direct (hashed). Use each one once, and say why it fits better than the others.</p>
+<table><tr><th></th><th>Organization</th><th>Why</th></tr>
+<tr><th>A weather station appends readings of different shapes as they arrive; once a month the whole file is analyzed in bulk.</th><td>Pile</td><td>Cheap append of irregular readings; monthly analysis scans the whole file.</td></tr>
+<tr><th>A weekly payroll run processes every employee in ID order; no one ever looks up a single employee.</th><td>Sequential</td><td>Payroll processes every employee in ID order; no random lookup needed.</td></tr>
+<tr><th>A bank file of accounts is processed in account-number order every night, and single accounts are looked up by number all day.</th><td>Indexed sequential</td><td>Supports ordered nightly batch and indexed account-number lookup.</td></tr>
+<tr><th>A library catalog is searched by title, by author, by subject and by ISBN, and its records vary a lot in length.</th><td>Indexed</td><td>Multiple indexes support title, author, subject, and ISBN searches.</td></tr>
+<tr><th>A login service checks thousands of user names per second by exact match and never lists users in order.</th><td>Direct (hashed)</td><td>Fast exact username matching without preserving order.</td></tr>
+</table>
+</div>
+<div class="a"><p class="q">(c) (i) Insert these keys, in order, into an empty B-tree with d = 2 (so a node holds 1 to 3 keys): 50, 20, 80, 10, 30, 60, 90, 70, 40, 25, 35. Say which insertions cause splits and which key moves up each time, and draw the final tree level by level, for example [40] / [10 20] [60 80]. (ii) A B-tree with d = 50 holds 1,000,000 keys. How many keys can one node hold at most, and at least (if it is not the root)? Using the height bound h ≤ logd((n + 1) / 2), what is the most nodes a search can read? How many levels would the shortest possible binary search tree of the same keys have?</p>
+<pre>(i) At d=2, a node holds at most 3 keys. Top-down splits: insertion 10 splits full root [20 50 80], promoting 50; insertion 70 splits [60 80 90], promoting 80; insertion 40 splits [10 20 30], promoting 20; insertion 25 splits full root [20 50 80], promoting 50 to a new root; insertion 35 splits [25 30 40], promoting 30. Final tree:
+[50]
+[20 30]                  [80]
+[10] [25] [35 40]       [60 70] [90]
+(ii) Maximum keys/node=2×50-1=99; nonroot minimum=50-1=49. h≤log_50((1,000,000+1)/2)=log_50(500,000.5)≈3.354, so integer h≤3 edges and a search reads at most 4 nodes. Minimum binary-tree levels=ceil(log_2(1,000,001))=20.</pre>
+</div>
+<h2>Problem 4Where a file&#39;s blocks live</h2>
+<div class="a"><p class="q">(a) A UNIX-style file system uses 1 KiB blocks and 4-byte block addresses. Each inode holds 15 addresses: 12 direct, then one single indirect, one double indirect and one triple indirect pointer. How many data blocks, and how many bytes, can be reached through each kind of pointer, and what is the largest possible file, in bytes and in GiB (two decimal places)?</p>
+<table><tr><th></th><th>Data blocks</th><th>Bytes</th></tr>
+<tr><th>12 direct</th><td>12</td><td>12,288</td></tr>
+<tr><th>Single indirect</th><td>256</td><td>262,144</td></tr>
+<tr><th>Double indirect</th><td>65,536</td><td>67,108,864</td></tr>
+<tr><th>Triple indirect</th><td>16,777,216</td><td>17,179,869,184</td></tr>
+<tr><th>Whole file (total)</th><td>16,843,020</td><td>17,247,252,480 (16.06 GiB)</td></tr>
+</table>
+</div>
+<div class="a"><p class="q">(a) A UNIX-style file system uses 1 KiB blocks and 4-byte block addresses. Each inode holds 15 addresses: 12 direct, then one single indirect, one double indirect and one triple indirect pointer. How many data blocks, and how many bytes, can be reached through each kind of pointer, and what is the largest possible file, in bytes and in GiB (two decimal places)?</p>
+<table><tr><th></th><th>Logical block</th><th>Pointer (direct / single / double / triple)</th><th>Disk reads</th></tr>
+<tr><th>9,000</th><td>8</td><td>direct</td><td>1</td></tr>
+<tr><th>100,000</th><td>97</td><td>single indirect</td><td>2</td></tr>
+<tr><th>5,000,000</th><td>4,882</td><td>double indirect</td><td>3</td></tr>
+<tr><th>100,000,000</th><td>97,656</td><td>triple indirect</td><td>4</td></tr>
+</table>
+</div>
+<div class="a"><p class="q">(b) A file is 50 blocks long (blocks 0 to 49). For each allocation method, count disk reads: to reach block 30 on its own (with nothing in memory except the directory entry), on average over all 50 blocks, and to read the whole file in order once.</p>
+<table><tr><th></th><th>Reads to reach block 30</th><th>Average reads per block</th><th>Reads for the whole file in order</th><th>External fragmentation? (yes / no)</th></tr>
+<tr><th>Contiguous</th><td>1</td><td>1</td><td>50</td><td>yes</td></tr>
+<tr><th>Chained</th><td>31</td><td>25.5</td><td>50</td><td>no</td></tr>
+<tr><th>Indexed (one index block)</th><td>2</td><td>2</td><td>51</td><td>no</td></tr>
+</table>
+</div>
+<div class="a"><p class="q">(b) A file is 50 blocks long (blocks 0 to 49). For each allocation method, count disk reads: to reach block 30 on its own (with nothing in memory except the directory entry), on average over all 50 blocks, and to read the whole file in order once.</p>
+<pre>Contiguous allocation needs a 50-block consecutive run. Free space can exist in scattered runs too small for the file: external fragmentation. Chained and indexed allocation accept scattered free blocks. If the next pointer in chained block 12 is damaged, following the chain from the directory entry cannot reach blocks 13–49. Average chained random access=(1+50)/2=25.5 reads. For indexed random access, each independent request reads the index block and target data block; a full sequential scan reuses the index block once.</pre>
+</div>
+<div class="a"><p class="q">(c) A 4 TiB disk is divided into 4 KiB blocks and keeps free space in a bit table (one bit per block). How many blocks does the disk have? How large is the bit table, in bytes and in MiB, what percentage of the disk is that, and how many disk blocks does it fill? A free block list on the empty disk would store each block number as a whole number of bytes: how many bytes does a block number need, and how large would that list be? Finally, why would allocating a block be slow if the OS searched the bit table from the start every time, and what extra table helps?</p>
+<pre>Disk blocks=(4×2^40)/(4×2^10)=2^30=1,073,741,824. Bit table=2^30 bits / 8=2^27=134,217,728 bytes=128 MiB. Percentage=(2^27/2^42)×100=0.0030517578125%. Disk blocks for bit table=2^27/2^12=32,768.
+A block number needs 30 bits, stored as ceil(30/8)=4 bytes. Free list on empty disk=2^30×4=4,294,967,296 bytes=4 GiB, before metadata.
+Searching the bit table from the start repeatedly rechecks occupied entries, becoming slower as the disk fills. A summary (hierarchical) bit table marks groups with free bits so full groups can be skipped.</pre>
+</div>
+<h2>B3Write the missing pieces, run, and explain</h2>
+<div class="a"><p class="q">B-a Paste the complete output of python mutex.py, run before your B-c and B-d changes.</p>
+<pre>Experiment 1: two threads each add 1 to count 3 times (count = count + 1 is load, add, store)
+  Increment race: 1193 reachable states
+    possible final values of count: 2, 3, 4, 5, 6
+
+Experiment 2: four ways to guard a critical section
+  Look, then flag (visits: T0 2, T1 2): 121 reachable states
+    both threads in the critical section at once: POSSIBLE. The shortest way:
+      T0  while flag[other]: wait                    flag0=False  flag1=False
+      T1  while flag[other]: wait                    flag0=False  flag1=False
+      T0  flag[me] = True                            flag0=True  flag1=False
+      T1  flag[me] = True                            flag0=True  flag1=True
+    can always still finish: yes
+  Flag, then look (visits: T0 2, T1 2): 105 reachable states
+    both threads in the critical section at once: never
+    can always still finish: NO (4 of 105 states are stuck). The shortest way to a dead end (a state no step can change):
+      T0  flag[me] = True                            flag0=True  flag1=False
+      T1  flag[me] = True                            flag0=True  flag1=True
+      stuck: T0 spins forever on &#39;while flag[other]: wait&#39;; T1 spins forever on &#39;while flag[other]: wait&#39;
+  Strict turns (visits: T0 1, T1 2): 13 reachable states
+    both threads in the critical section at once: never
+    can always still finish: NO (13 of 13 states are stuck). The shortest way to a dead end (a state no step can change):
+      T0  while turn != me: wait                     turn=0
+      T0  CS: critical section                       turn=0
+      T0  turn = other                               turn=1
+      T0  repeat if visits remain                    turn=1
+      T1  while turn != me: wait                     turn=1
+      T1  CS: critical section                       turn=1
+      T1  turn = other                               turn=0
+      T1  repeat if visits remain                    turn=0
+      stuck: T0 has finished; T1 spins forever on &#39;while turn != me: wait&#39;
+  Peterson&#39;s algorithm (visits: T0 2, T1 2): 182 reachable states
+    both threads in the critical section at once: never
+    can always still finish: yes
+
+Experiment 3: a producer and a consumer pass 3 items through a buffer that holds 2
+  Bounded buffer: 125 reachable states
+    both threads in the critical section at once: never
+    buffer overflow or underflow: never
+    can always still finish: yes</pre>
+</div>
+<div class="a"><p class="q">B-b Experiment 2. For each of the three flawed locks, use its printed trace to tell, in your own words, what the two threads did and why the result is bad, and name the requirement from Problem 1(b) that is the root cause of its failure. For strict turns, explain why all of its states are stuck. Then explain what makes Peterson&#39;s algorithm pass both checks: why can the two threads never both get past the waiting step, and why can they never both spin forever? Finally, apply the definition in B2&#39;s note to Peterson&#39;s algorithm: describe an endless schedule of steps under which thread 1 never enters its critical section, even though the checker says &quot;yes&quot;. Is that schedule fair? Then explain why, under a fair scheduler, thread 1 is sure to get in, and which step of the algorithm makes that so.</p>
+<pre>Look, then flag: both T0 and T1 check the other flag while it is down, then both raise their own flags and enter. This violates requirement 1 (only one inside); check and flag update were separate.
+Flag, then look: both raise flags, then both see the other flag up and spin forever. Requirement 3 (no deadlock) fails.
+Strict turns: T0 gets its one visit and hands the turn to T1. T1 visits once and hands the turn to finished T0; T1 waits forever for its second turn while the critical section is empty. This violates requirement 4 (free means enter at once). All 13 states are stuck because every schedule must eventually reach that same impossible second visit.
+Peterson: Both raise flags and give priority to the other. When both flags are up, turn has only one value, so only one passes the wait; both cannot enter. They also cannot both spin forever because turn cannot favor both opposing threads simultaneously. The entrant eventually clears its flag.
+An unfair infinite scheduler could repeatedly run T0 and never schedule T1 at all. T1 would never enter even though finishing is possible. Under a fair scheduler, T1 eventually raises flag1. T0 cannot repeatedly overtake: each new T0 attempt sets &#39;turn = other&#39; (turn=1), so T0 waits while flag1 stays raised; T1 receives CPU time and enters. Thus the check&#39;s &#39;yes&#39; means a completion path exists, and fairness prevents permanent scheduling starvation.</pre>
+</div>
+<div class="a"><p class="q">B-c Experiment 3, broken on purpose. In bounded_buffer, swap the producer&#39;s first two steps by exchanging the names &quot;e&quot; and &quot;s&quot; in them, so the producer locks the buffer before it waits for an empty slot (the bug of Problem 2(b)). Run the program and paste the Experiment 3 lines. Using the trace, explain how many items were in the buffer when the threads got stuck, who holds s, and who waits for whom. Why does the checker still say &quot;both threads in the critical section at once: never&quot;? Then put the two steps back the way they were and check that Experiment 3 reports &quot;yes&quot; again.</p>
+<pre>Experiment 3: a producer and a consumer pass 3 items through a buffer that holds 2
+  Bounded buffer: 124 reachable states
+    both threads in the critical section at once: never
+    buffer overflow or underflow: never
+    can always still finish: NO (2 of 124 states are stuck). The shortest way to a dead end (a state no step can change):
+      T0  semWait(s)                                 e=2  items=0  n=0  s=0
+      T0  semWait(e)                                 e=1  items=0  n=0  s=0
+      T0  CS: append an item                         e=1  items=1  n=0  s=0
+      T0  semSignal(s)                               e=1  items=1  n=0  s=1
+      T0  semSignal(n)                               e=1  items=1  n=1  s=1
+      T0  repeat if items remain                     e=1  items=1  n=1  s=1
+      T0  semWait(s)                                 e=1  items=1  n=1  s=0
+      T0  semWait(e)                                 e=0  items=1  n=1  s=0
+      T0  CS: append an item                         e=0  items=2  n=1  s=0
+      T0  semSignal(s)                               e=0  items=2  n=1  s=1
+      T0  semSignal(n)                               e=0  items=2  n=2  s=1
+      T0  repeat if items remain                     e=0  items=2  n=2  s=1
+      T0  semWait(s)                                 e=0  items=2  n=2  s=0
+      T1  semWait(n)                                 e=0  items=2  n=1  s=0
+      stuck: T0 is blocked at &#39;semWait(e)&#39;; T1 is blocked at &#39;semWait(s)&#39;
+
+At the dead end, items=2 (full), s=0, e=0, n=1. T0 holds s while blocked on semWait(e) for an empty slot; T1 has claimed an item but is blocked on semWait(s). T0 needs T1 to remove an item and signal e, while T1 needs T0 to release s. The checker still says both-in-CS &#39;never&#39; because semaphore s still excludes concurrent entry even though progress is lost. After restoring producer order to semWait(e), then semWait(s), the two-slot model again reports 125 reachable states, &#39;never&#39; for both-in-CS and overflow/underflow, and &#39;yes&#39; for finishing.</pre>
+</div>
+<div class="a"><p class="q">B-d Your own experiment. Change one thing in mutex.py to test an idea of your own, and mark the changed line with a comment that starts # B-d. Some starting points: in peterson, run turn = other before flag[me] = True (swap the two steps&#39; actions and keep their step numbers); give thread 0 in strict_turns as many visits as thread 1; make SIZE 1; or replace the producer&#39;s semWait(e) with a step that does nothing, (&quot;skip&quot;, lambda sh, me: 1). Before running it, write down the change, what you predict will happen and why. Then run it, paste the relevant lines of output, and say whether your prediction held and what explains any surprise.</p>
+<pre>Change (recorded before running): SIZE from 2 to 1; the line is marked # B-d. Prediction: correct semaphore order still prevents concurrent critical-section access, overflow, underflow, and deadlock. The number of states may change because the buffer has fewer configurations.
+
+Output:
+Experiment 3: a producer and a consumer pass 3 items through a buffer that holds 1
+  Bounded buffer: 67 reachable states
+    both threads in the critical section at once: never
+    buffer overflow or underflow: never
+    can always still finish: yes
+
+The prediction held. A one-slot buffer makes the producer wait on e more often, but it never holds s while waiting. Reachable states fell from 125 to 67 because capacity 1 permits fewer states.</pre>
+</div>
+<script type="application/json" id="answer-data">{"hw":"os-hw6","answers":{"__name":"Zac Rackers","p1a":"(i) Possible final values: 4, 6, 7, 8. L=load, A=add 1, M=multiply by 2, S=store (parentheses show register or stored value).\n4: T0 L(3), A(4); T1 L(3), M(6), S(6); T0 S(4).\n6: T1 L(3), M(6); T0 L(3), A(4), S(4); T1 S(6).\n7: T1 L(3), M(6), S(6); T0 L(6), A(7), S(7).\n8: T0 L(3), A(4), S(4); T1 L(4), M(8), S(8).\nThe last store is either based on original 3 (4 or 6) or on the other thread's completed store (7 or 8).\n(ii) Maximum 8: let T0 complete four increments, then T1 complete four. Minimum 2. One 24-step order:\nT0 L(0), A(1); T1 L(0); T0 S(1), L(1), A(2), S(2), L(2), A(3), S(3); T1 A(1), S(1); T0 L(1), A(2); T1 L(1), A(2), S(2), L(2), A(3), S(3), L(3), A(4), S(4); T0 S(2).\nStore sequence: 1,2,3,1,2,3,4,2. The last store must be the fourth increment of one thread. Before that thread's final load, it has already stored at least once; every store writes at least 1. The final increment therefore writes at least 2.","p1b":[["3","Both raise flags and wait forever for the other to lower its flag."],["4","Even with a free resource, a process must wait for its assigned time slot."],["2","Stopping outside the critical section prevents check-in and blocks others."],["6","An unbounded network wait can keep the process inside forever."],["5","The 2 ms pause assumes a timing/speed bound that may not hold."],["1","Both can read busy=0 before either writes 1, then both enter."]],"p1c":"(i) With one CPU, disabling interrupts prevents timer-preemptive context switching while this thread handles the run queue, provided it does not voluntarily block.\n(ii) Interrupt latency delays device and timer handling, hurting responsiveness; an unbounded wait or crash with interrupts off can freeze the system.\n(iii) Disabling interrupts is local to a core. T0 on core 0 and T1 on core 1 can each disable its own interrupts and both enter the shared run-queue critical section simultaneously.","p1d":"(i) For bolt=0, CAS returns 0 and changes bolt atomically to 1; the caller enters. For bolt=1, it returns 1 and leaves bolt at 1; the caller spins. Scheme F fails because separate read/write lets both contenders read 0. Atomic CAS allows only one transition from 0 to 1.\n(ii) Any of P2, P3, P4, or a returning P1 may win after release. There is no FIFO order; P4 can lose indefinitely. Requirement 3 (no starvation) is at risk.\n(iii) H spins at higher priority, starving L of CPU time to release bolt on a one-processor system. A blocking lock or priority inheritance would let L run and finish.","p2a":[["1","1","0","A","none"],["0","1","0","A","none"],["0","0","0","A","none"],["-1","0","0","A","C on s"],["-1","0","0","A, B","C on s"],["0","0","0","A, B","none; C released"],["0","1","0","A, B","none"],["0","1","-1","A, B","P on e"],["0","1","-1","B","P on e"],["1","1","-1","B","P on e"],["1","1","0","B","none; P released"],["0","1","0","B","none"]],"p2a-why":"After operation 8, e=-1 means one producer waits for an empty slot; the buffer is full. C takes A because it is oldest. P's signal at operation 6 already released C from semWait(s), granting C the mutex; C needs no second wait at operation 9.","p2b":"(i) Start (s,n,e)=(1,2,0). P semWait(s) -> (0,2,0), holding s. P semWait(e) -> (0,2,-1), blocked. C semWait(n) -> (0,1,-1), claiming an item. C semWait(s) -> (-1,1,-1), blocked. This is the shortest four-operation sequence leaving both blocked. P needs C to remove an item and signal e; C needs P to release s.\n(ii) Yes. P can fill the buffer through prior iterations while C is delayed, then take s for another iteration with e=0, recreating the same circular wait.\n(iii) Swapping the producer's two signals alone cannot cause this deadlock; both signals are nonblocking, so P never holds s while waiting on e.","p2c-grid":[["0","4","0","4"],["12","14","4","6"],["2","6","6","10"],["5","9","6","10"],["8","12","8","12"]],"p2c":"W1 waits 12-1=11 units with readers priority and 4-1=3 with writers priority. Under reader priority, overlapping 4-unit reads at times 0,2,5,8 keep the file occupied through time 12. A reader arriving every 3 units forever would keep the file occupied forever, so W1 would starve. With writers priority, R2 and R3 start together after W1 finishes at 6; R4 arrives at 8 and joins.","p2d":"(i) The one message is a token granting entry. receive removes it, so everyone else blocks until its holder sends it back on exit.\n(ii) Two messages permit two simultaneous entries, violating mutual exclusion. No message leaves everyone blocked indefinitely.\n(iii) A nonblocking empty-handed receive would let processes proceed without owning the token, so simultaneous entries become possible.","p3a-fixed":"Blocking factor=floor(2048/300)=6. Unused in each full block=2048-6×300=248 bytes. Blocks=ceil(10000/6)=1667. Record 4321: block floor(4321/6)=720, slot 4321 mod 6=1. Allocated=1667×2048=3,414,016 bytes; records=3,000,000 bytes; unused=414,016 bytes, or 414,016/3,414,016×100=12.13% (including last block).","p3a-grid":[["4","596","C: 224+226; E: 598+102; G: 572+28"],["5","1,620","none"]],"p3a":"Spanned: block 0=A300+B500+C224; block 1=C226+D200+E598; block 2=E102+F350+G572; block 3=G28+H400, leaving 596 bytes. Total records=3500 bytes; 4×1024-3500=596.\nUnspanned: block 0=A300+B500 (224 unused); block 1=C450+D200 (374); block 2=E700 (324); block 3=F350+G600 (74); block 4=H400 (624). Total unused=224+374+324+74+624=1,620.\nE spans blocks 1 and 2 (2 reads) or occupies block 2 alone (1 read). Unspanned records are simpler and faster to fetch individually, but waste more space.","p3b":[["Pile","Cheap append of irregular readings; monthly analysis scans the whole file."],["Sequential","Payroll processes every employee in ID order; no random lookup needed."],["Indexed sequential","Supports ordered nightly batch and indexed account-number lookup."],["Indexed","Multiple indexes support title, author, subject, and ISBN searches."],["Direct (hashed)","Fast exact username matching without preserving order."]],"p3c":"(i) At d=2, a node holds at most 3 keys. Top-down splits: insertion 10 splits full root [20 50 80], promoting 50; insertion 70 splits [60 80 90], promoting 80; insertion 40 splits [10 20 30], promoting 20; insertion 25 splits full root [20 50 80], promoting 50 to a new root; insertion 35 splits [25 30 40], promoting 30. Final tree:\n[50]\n[20 30]                  [80]\n[10] [25] [35 40]       [60 70] [90]\n(ii) Maximum keys/node=2×50-1=99; nonroot minimum=50-1=49. h≤log_50((1,000,000+1)/2)=log_50(500,000.5)≈3.354, so integer h≤3 edges and a search reads at most 4 nodes. Minimum binary-tree levels=ceil(log_2(1,000,001))=20.","p4a-size":[["12","12,288"],["256","262,144"],["65,536","67,108,864"],["16,777,216","17,179,869,184"],["16,843,020","17,247,252,480 (16.06 GiB)"]],"p4a-reach":[["8","direct","1"],["97","single indirect","2"],["4,882","double indirect","3"],["97,656","triple indirect","4"]],"p4b-grid":[["1","1","50","yes"],["31","25.5","50","no"],["2","2","51","no"]],"p4b":"Contiguous allocation needs a 50-block consecutive run. Free space can exist in scattered runs too small for the file: external fragmentation. Chained and indexed allocation accept scattered free blocks. If the next pointer in chained block 12 is damaged, following the chain from the directory entry cannot reach blocks 13–49. Average chained random access=(1+50)/2=25.5 reads. For indexed random access, each independent request reads the index block and target data block; a full sequential scan reuses the index block once.","p4c":"Disk blocks=(4×2^40)/(4×2^10)=2^30=1,073,741,824. Bit table=2^30 bits / 8=2^27=134,217,728 bytes=128 MiB. Percentage=(2^27/2^42)×100=0.0030517578125%. Disk blocks for bit table=2^27/2^12=32,768.\nA block number needs 30 bits, stored as ceil(30/8)=4 bytes. Free list on empty disk=2^30×4=4,294,967,296 bytes=4 GiB, before metadata.\nSearching the bit table from the start repeatedly rechecks occupied entries, becoming slower as the disk fills. A summary (hierarchical) bit table marks groups with free bits so full groups can be skipped.","ba":"Experiment 1: two threads each add 1 to count 3 times (count = count + 1 is load, add, store)\r\n  Increment race: 1193 reachable states\r\n    possible final values of count: 2, 3, 4, 5, 6\r\n\r\nExperiment 2: four ways to guard a critical section\r\n  Look, then flag (visits: T0 2, T1 2): 121 reachable states\r\n    both threads in the critical section at once: POSSIBLE. The shortest way:\r\n      T0  while flag[other]: wait                    flag0=False  flag1=False\r\n      T1  while flag[other]: wait                    flag0=False  flag1=False\r\n      T0  flag[me] = True                            flag0=True  flag1=False\r\n      T1  flag[me] = True                            flag0=True  flag1=True\r\n    can always still finish: yes\r\n  Flag, then look (visits: T0 2, T1 2): 105 reachable states\r\n    both threads in the critical section at once: never\r\n    can always still finish: NO (4 of 105 states are stuck). The shortest way to a dead end (a state no step can change):\r\n      T0  flag[me] = True                            flag0=True  flag1=False\r\n      T1  flag[me] = True                            flag0=True  flag1=True\r\n      stuck: T0 spins forever on 'while flag[other]: wait'; T1 spins forever on 'while flag[other]: wait'\r\n  Strict turns (visits: T0 1, T1 2): 13 reachable states\r\n    both threads in the critical section at once: never\r\n    can always still finish: NO (13 of 13 states are stuck). The shortest way to a dead end (a state no step can change):\r\n      T0  while turn != me: wait                     turn=0\r\n      T0  CS: critical section                       turn=0\r\n      T0  turn = other                               turn=1\r\n      T0  repeat if visits remain                    turn=1\r\n      T1  while turn != me: wait                     turn=1\r\n      T1  CS: critical section                       turn=1\r\n      T1  turn = other                               turn=0\r\n      T1  repeat if visits remain                    turn=0\r\n      stuck: T0 has finished; T1 spins forever on 'while turn != me: wait'\r\n  Peterson's algorithm (visits: T0 2, T1 2): 182 reachable states\r\n    both threads in the critical section at once: never\r\n    can always still finish: yes\r\n\r\nExperiment 3: a producer and a consumer pass 3 items through a buffer that holds 2\r\n  Bounded buffer: 125 reachable states\r\n    both threads in the critical section at once: never\r\n    buffer overflow or underflow: never\r\n    can always still finish: yes","bb":"Look, then flag: both T0 and T1 check the other flag while it is down, then both raise their own flags and enter. This violates requirement 1 (only one inside); check and flag update were separate.\nFlag, then look: both raise flags, then both see the other flag up and spin forever. Requirement 3 (no deadlock) fails.\nStrict turns: T0 gets its one visit and hands the turn to T1. T1 visits once and hands the turn to finished T0; T1 waits forever for its second turn while the critical section is empty. This violates requirement 4 (free means enter at once). All 13 states are stuck because every schedule must eventually reach that same impossible second visit.\nPeterson: Both raise flags and give priority to the other. When both flags are up, turn has only one value, so only one passes the wait; both cannot enter. They also cannot both spin forever because turn cannot favor both opposing threads simultaneously. The entrant eventually clears its flag.\nAn unfair infinite scheduler could repeatedly run T0 and never schedule T1 at all. T1 would never enter even though finishing is possible. Under a fair scheduler, T1 eventually raises flag1. T0 cannot repeatedly overtake: each new T0 attempt sets 'turn = other' (turn=1), so T0 waits while flag1 stays raised; T1 receives CPU time and enters. Thus the check's 'yes' means a completion path exists, and fairness prevents permanent scheduling starvation.","bc":"Experiment 3: a producer and a consumer pass 3 items through a buffer that holds 2\r\n  Bounded buffer: 124 reachable states\r\n    both threads in the critical section at once: never\r\n    buffer overflow or underflow: never\r\n    can always still finish: NO (2 of 124 states are stuck). The shortest way to a dead end (a state no step can change):\r\n      T0  semWait(s)                                 e=2  items=0  n=0  s=0\r\n      T0  semWait(e)                                 e=1  items=0  n=0  s=0\r\n      T0  CS: append an item                         e=1  items=1  n=0  s=0\r\n      T0  semSignal(s)                               e=1  items=1  n=0  s=1\r\n      T0  semSignal(n)                               e=1  items=1  n=1  s=1\r\n      T0  repeat if items remain                     e=1  items=1  n=1  s=1\r\n      T0  semWait(s)                                 e=1  items=1  n=1  s=0\r\n      T0  semWait(e)                                 e=0  items=1  n=1  s=0\r\n      T0  CS: append an item                         e=0  items=2  n=1  s=0\r\n      T0  semSignal(s)                               e=0  items=2  n=1  s=1\r\n      T0  semSignal(n)                               e=0  items=2  n=2  s=1\r\n      T0  repeat if items remain                     e=0  items=2  n=2  s=1\r\n      T0  semWait(s)                                 e=0  items=2  n=2  s=0\r\n      T1  semWait(n)                                 e=0  items=2  n=1  s=0\r\n      stuck: T0 is blocked at 'semWait(e)'; T1 is blocked at 'semWait(s)'\n\nAt the dead end, items=2 (full), s=0, e=0, n=1. T0 holds s while blocked on semWait(e) for an empty slot; T1 has claimed an item but is blocked on semWait(s). T0 needs T1 to remove an item and signal e, while T1 needs T0 to release s. The checker still says both-in-CS 'never' because semaphore s still excludes concurrent entry even though progress is lost. After restoring producer order to semWait(e), then semWait(s), the two-slot model again reports 125 reachable states, 'never' for both-in-CS and overflow/underflow, and 'yes' for finishing.","bd":"Change (recorded before running): SIZE from 2 to 1; the line is marked # B-d. Prediction: correct semaphore order still prevents concurrent critical-section access, overflow, underflow, and deadlock. The number of states may change because the buffer has fewer configurations.\n\nOutput:\nExperiment 3: a producer and a consumer pass 3 items through a buffer that holds 1\r\n  Bounded buffer: 67 reachable states\r\n    both threads in the critical section at once: never\r\n    buffer overflow or underflow: never\r\n    can always still finish: yes\n\nThe prediction held. A one-slot buffer makes the producer wait on e more often, but it never holds s while waiting. Reachable states fell from 125 to 67 because capacity 1 permits fewer states."}}</script>
+</body>
+</html>
